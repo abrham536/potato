@@ -1,27 +1,27 @@
 {
-    "test_loss": 0.8047,
-    "test_accuracy": 0.7269,
-    "macro_f1": 0.6852,
+    "test_loss": 0.223,
+    "test_accuracy": 0.9028,
+    "macro_f1": 0.8523,
     "per_class": {
         "Potato___Early_blight": {
             "display_name": "Early Blight",
-            "precision": 0.6447,
+            "precision": 0.9333,
             "recall": 0.98,
-            "f1_score": 0.7778,
+            "f1_score": 0.9561,
             "support": 100
         },
         "Potato___Late_blight": {
             "display_name": "Late Blight",
-            "precision": 0.9444,
-            "recall": 0.51,
-            "f1_score": 0.6623,
+            "precision": 0.9647,
+            "recall": 0.82,
+            "f1_score": 0.8865,
             "support": 100
         },
         "Potato___healthy": {
             "display_name": "Healthy",
-            "precision": 0.8,
-            "recall": 0.5,
-            "f1_score": 0.6154,
+            "precision": 0.5769,
+            "recall": 0.9375,
+            "f1_score": 0.7143,
             "support": 16
         }
     },
@@ -32,14 +32,14 @@
             0
         ],
         [
-            47,
-            51,
-            2
+            7,
+            82,
+            11
         ],
         [
-            7,
+            0,
             1,
-            8
+            15
         ]
     ]
 }

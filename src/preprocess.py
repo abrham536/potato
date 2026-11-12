@@ -10,10 +10,11 @@ import src.config
 
 import numpy as np
 
-def compute_class_weights(train_dir: Path):
+def compute_class_weights(train_dir: Path, smooth_factor: float = 0.5):
     """
-    Computes balanced class weights for training:
-        weight[j] = total_samples / (num_classes * count[j])
+    Computes smoothed, balanced class weights for training:
+        weight[j] = (total_samples / (num_classes * count[j])) ** smooth_factor
+    Normalized so the average weight is 1.0, preventing extreme gradient dominance.
     """
     train_dir = Path(train_dir)
     classes = sorted([d.name for d in train_dir.iterdir() if d.is_dir()])
@@ -27,13 +28,19 @@ def compute_class_weights(train_dir: Path):
         total_samples += c
 
     num_classes = len(classes)
-    class_weights = {}
-    print("Class Distribution in Training Set:")
-    for idx, cls in enumerate(classes):
+    raw_weights = []
+    for cls in classes:
         cnt = counts[cls]
-        w = total_samples / (num_classes * cnt) if cnt > 0 else 1.0
-        class_weights[idx] = round(w, 4)
-        print(f"  [{idx}] {cls:25s}: {cnt:4d} images  -->  Class Weight: {w:.4f}")
+        w = (total_samples / (num_classes * cnt)) ** smooth_factor if cnt > 0 else 1.0
+        raw_weights.append(w)
+
+    mean_weight = sum(raw_weights) / len(raw_weights)
+    class_weights = {}
+    print("\nSmoothed Class Distribution in Training Set:")
+    for idx, cls in enumerate(classes):
+        normalized_w = round(raw_weights[idx] / mean_weight, 4)
+        class_weights[idx] = normalized_w
+        print(f"  [{idx}] {cls:25s}: {counts[cls]:4d} images  -->  Class Weight: {normalized_w:.4f}")
 
     return class_weights
 

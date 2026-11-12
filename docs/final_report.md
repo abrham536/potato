@@ -117,13 +117,33 @@ Input (256 x 256 x 3)
 **Total Parameters**: 424,131 (Trainable: 422,915; Non-trainable: 1,216). Storage footprint: **1.62 MB**.
 
 ### 4.2 Training Strategy & Callbacks
-* **Optimizer**: Adam ($\alpha = 0.001, \beta_1 = 0.9, \beta_2 = 0.999$)
-* **Loss**: Categorical Cross-Entropy with balanced class weighting
+* **Optimizer**: Adam ($\alpha = 0.0005, \beta_1 = 0.9, \beta_2 = 0.999$)
+* **Loss**: Categorical Cross-Entropy with Softmax output
 * **Batch Size**: 32
 * **Callbacks**:
-  * `ModelCheckpoint`: Saves exclusively the best model weights based on minimum validation loss.
-  * `EarlyStopping`: Patience = 5 epochs with `restore_best_weights=True`.
-  * `ReduceLROnPlateau`: Halves learning rate ($\text{factor}=0.2$) upon stagnation for 2 epochs.
+  * `ModelCheckpoint`: Saves exclusively the best model weights based on maximum validation accuracy.
+  * `EarlyStopping`: Patience = 7 epochs with automatic weight restoration (`restore_best_weights=True`).
+  * `ReduceLROnPlateau`: Dynamically decays learning rate ($\text{factor}=0.5$) upon plateau for 3 epochs.
+
+### 4.3 Experimental Evaluation & Quantitative Results
+The trained CNN checkpoint was evaluated against the untouched 216-image test set:
+* **Overall Test Accuracy**: **90.28%**
+* **Overall Test Loss**: **0.2230**
+* **Macro Average Recall**: **91.25%**
+* **Macro Average F1-Score**: **85.23%**
+
+#### Per-Class Diagnostic Performance
+| Class | Precision | Recall | F1-Score | Test Support |
+| :--- | :---: | :---: | :---: | :---: |
+| **Early Blight** (*Alternaria solani*) | 93.33% | 98.00% | 95.61% | 100 images |
+| **Late Blight** (*Phytophthora infestans*) | 96.47% | 82.00% | 88.65% | 100 images |
+| **Healthy Foliage** | 57.69% | 93.75% | 71.43% | 16 images |
+| **Macro Average** | **82.50%** | **91.25%** | **85.23%** | **216 images** |
+
+#### Test Set Confusion Matrix Breakdown
+* **Early Blight (100 images)**: 98 correctly identified, 2 confused as Late Blight, 0 as Healthy.
+* **Late Blight (100 images)**: 82 correctly identified, 7 confused as Early Blight, 11 as Healthy.
+* **Healthy (16 images)**: 15 correctly identified, 1 confused as Late Blight, 0 as Early Blight.
 
 ---
 

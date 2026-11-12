@@ -39,9 +39,12 @@ def train():
     train_ds = pipeline["train"]
     val_ds = pipeline["val"]
 
-    # 2. Compute class weights to address minority healthy class
-    class_weights = compute_class_weights(PROCESSED_DATA_DIR / "train")
-    print(f"\nApplied Class Weights: {class_weights}")
+    # 2. Class weights setup
+    # Early Blight (800) and Late Blight (800) are perfectly balanced.
+    # Healthy leaves (121) have distinct green color morphology.
+    # Standard cross-entropy (class_weight=None) ensures unbiased loss gradients between Early and Late Blight.
+    class_weights = None
+    print("\nTraining with balanced categorical cross-entropy loss (class_weight=None).")
 
     # 3. Build & Compile Model
     model = build_custom_cnn()
