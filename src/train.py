@@ -1,5 +1,6 @@
 import os
 import sys
+import csv
 from pathlib import Path
 
 # Add project root to sys.path
@@ -27,7 +28,6 @@ import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import csv
 
 def train():
     print("=" * 60)
@@ -58,14 +58,14 @@ def train():
     callbacks = [
         tf.keras.callbacks.ModelCheckpoint(
             filepath=str(BEST_MODEL_PATH),
-            monitor="val_loss",
-            mode="min",
+            monitor="val_accuracy",
+            mode="max",
             save_best_only=True,
             verbose=1
         ),
         tf.keras.callbacks.EarlyStopping(
-            monitor="val_loss",
-            mode="min",
+            monitor="val_accuracy",
+            mode="max",
             patience=EARLY_STOPPING_PATIENCE,
             restore_best_weights=True,
             verbose=1
@@ -130,8 +130,8 @@ def plot_training_curves(csv_path: Path, output_image_path: Path):
     ax1.legend(loc="lower right")
 
     # Loss Plot
-    ax2.plot(epochs, df["loss"], "r-o", label="Training Loss", linewidth=2)
-    ax2.plot(epochs, df["val_loss"], "m-s", label="Validation Loss", linewidth=2)
+    ax2.plot(epochs, loss, "r-o", label="Training Loss", linewidth=2)
+    ax2.plot(epochs, val_loss, "m-s", label="Validation Loss", linewidth=2)
     ax2.set_title("Training and Validation Loss", fontsize=12, weight="bold")
     ax2.set_xlabel("Epoch", fontsize=11)
     ax2.set_ylabel("Loss", fontsize=11)

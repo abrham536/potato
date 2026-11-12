@@ -1,5 +1,13 @@
 import os
+import sys
 from pathlib import Path
+
+# Add project root to sys.path and configure Keras environment
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+import src.config
+
 import numpy as np
 
 def compute_class_weights(train_dir: Path):
@@ -36,11 +44,10 @@ def build_data_pipeline(
     seed=42
 ):
     """
-    Builds optimized TensorFlow tf.data pipelines for Train, Val, and Test splits.
-    Includes data augmentation for the training split, normalization, and prefetching.
+    Builds clean, high-performance tf.data pipelines for Train, Val, and Test splits.
+    Rescaling and data augmentation are handled directly inside the Keras Model.
     """
     import tensorflow as tf
-    from tensorflow.keras import layers
 
     train_dir = data_dir / "train"
     val_dir = data_dir / "val"
@@ -73,47 +80,13 @@ def build_data_pipeline(
         label_mode="categorical"
     )
 
-    class_names = train_ds.class_names
-    print(f"Detected Classes ({len(class_names)}): {class_names}")
-
-    # Data Augmentation Pipeline (only applied during training)
-    data_augmentation = tf.keras.Sequential([
-        layers.RandomFlip("horizontal_and_vertical"),
-        layers.RandomRotation(0.15),
-        layers.RandomZoom(0.10),
-        layers.RandomContrast(0.10),
-    ], name="data_augmentation")
-
-    # Rescaling layer: maps [0, 255] -> [0.0, 1.0]
-    rescale_layer = layers.Rescaling(1./255)
-
     AUTOTUNE = tf.data.AUTOTUNE
 
-    # Prepare Train: Augment -> Rescale -> Cache -> Prefetch
-    train_pipeline = train_ds.map(
-        lambda x, y: (rescale_layer(data_augmentation(x, training=True)), y),
-        num_parallel_calls=AUTOTUNE
-    ).cache().prefetch(buffer_size=AUTOTUNE)
-
-    # Prepare Val: Rescale -> Cache -> Prefetch
-    val_pipeline = val_ds.map(
-        lambda x, y: (rescale_layer(x), y),
-        num_parallel_calls=AUTOTUNE
-    ).cache().prefetch(buffer_size=AUTOTUNE)
-
-    # Prepare Test: Rescale -> Cache -> Prefetch
-    test_pipeline = test_ds.map(
-        lambda x, y: (rescale_layer(x), y),
-        num_parallel_calls=AUTOTUNE
-    ).cache().prefetch(buffer_size=AUTOTUNE)
-
     return {
-        "train": train_pipeline,
-        "val": val_pipeline,
-        "test": test_pipeline,
-        "class_names": class_names,
-        "data_augmentation": data_augmentation,
-        "raw_train_ds": train_ds
+        "train": train_ds.cache().prefetch(buffer_size=AUTOTUNE),
+        "val": val_ds.cache().prefetch(buffer_size=AUTOTUNE),
+        "test": test_ds.cache().prefetch(buffer_size=AUTOTUNE),
+        "class_names": train_ds.class_names
     }
 
 if __name__ == "__main__":

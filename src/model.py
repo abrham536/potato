@@ -17,57 +17,41 @@ def build_custom_cnn(
     dropout_rate=DROPOUT_RATE
 ) -> tf.keras.Model:
     """
-    Builds a 4-Block Deep Convolutional Neural Network with Batch Normalization,
-    Global Average Pooling, and a Softmax output classifier.
-    
-    Architecture:
-      ConvBlock 1: Conv2D(32)  -> BatchNorm -> ReLU -> MaxPool2D(2,2)
-      ConvBlock 2: Conv2D(64)  -> BatchNorm -> ReLU -> MaxPool2D(2,2)
-      ConvBlock 3: Conv2D(128) -> BatchNorm -> ReLU -> MaxPool2D(2,2)
-      ConvBlock 4: Conv2D(256) -> BatchNorm -> ReLU -> MaxPool2D(2,2)
-      GlobalAveragePooling2D
-      Dense(128) -> BatchNorm -> ReLU -> Dropout(0.3)
-      Dense(3, activation='softmax')
+    Builds an end-to-end Convolutional Neural Network with built-in preprocessing,
+    runtime data augmentation, hierarchical feature extraction, and Softmax classification.
     """
-    inputs = layers.Input(shape=input_shape, name="input_image")
+    model = models.Sequential([
+        layers.Input(shape=input_shape, name="input_image"),
+        
+        # 1. Internal Preprocessing & Data Augmentation (active only during training)
+        layers.Rescaling(1.0 / 255.0, name="rescaling"),
+        layers.RandomFlip("horizontal_and_vertical", name="random_flip"),
+        layers.RandomRotation(0.15, name="random_rotation"),
+        layers.RandomZoom(0.10, name="random_zoom"),
 
-    # Block 1: Low-level edges & contours
-    x = layers.Conv2D(32, (3, 3), padding="same", name="conv1")(inputs)
-    x = layers.BatchNormalization(name="bn1")(x)
-    x = layers.Activation("relu", name="relu1")(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2), name="pool1")(x)
+        # 2. Convolutional Block 1 (Low-level features)
+        layers.Conv2D(32, (3, 3), activation="relu", padding="same", name="conv1"),
+        layers.MaxPooling2D(pool_size=(2, 2), name="pool1"),
 
-    # Block 2: Textural features & small leaf spots
-    x = layers.Conv2D(64, (3, 3), padding="same", name="conv2")(x)
-    x = layers.BatchNormalization(name="bn2")(x)
-    x = layers.Activation("relu", name="relu2")(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2), name="pool2")(x)
+        # 3. Convolutional Block 2 (Leaf texture & lesion margins)
+        layers.Conv2D(64, (3, 3), activation="relu", padding="same", name="conv2"),
+        layers.MaxPooling2D(pool_size=(2, 2), name="pool2"),
 
-    # Block 3: Complex lesion geometry & margins
-    x = layers.Conv2D(128, (3, 3), padding="same", name="conv3")(x)
-    x = layers.BatchNormalization(name="bn3")(x)
-    x = layers.Activation("relu", name="relu3")(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2), name="pool3")(x)
+        # 4. Convolutional Block 3 (Necrotic spot morphology)
+        layers.Conv2D(128, (3, 3), activation="relu", padding="same", name="conv3"),
+        layers.MaxPooling2D(pool_size=(2, 2), name="pool3"),
 
-    # Block 4: High-level disease pattern recognition
-    x = layers.Conv2D(256, (3, 3), padding="same", name="conv4")(x)
-    x = layers.BatchNormalization(name="bn4")(x)
-    x = layers.Activation("relu", name="relu4")(x)
-    x = layers.MaxPooling2D(pool_size=(2, 2), name="pool4")(x)
+        # 5. Convolutional Block 4 (Complex disease patterns)
+        layers.Conv2D(128, (3, 3), activation="relu", padding="same", name="conv4"),
+        layers.MaxPooling2D(pool_size=(2, 2), name="pool4"),
 
-    # Spatial aggregation via Global Average Pooling (minimizes parameter count & prevents overfitting)
-    x = layers.GlobalAveragePooling2D(name="gap")(x)
+        # 6. Classifier Head
+        layers.Flatten(name="flatten"),
+        layers.Dense(128, activation="relu", name="dense128"),
+        layers.Dropout(dropout_rate, name="dropout"),
+        layers.Dense(num_classes, activation="softmax", name="classifier_output")
+    ], name="Potato_Disease_Custom_CNN")
 
-    # Dense representation head
-    x = layers.Dense(128, name="dense128")(x)
-    x = layers.BatchNormalization(name="bn_dense")(x)
-    x = layers.Activation("relu", name="relu_dense")(x)
-    x = layers.Dropout(dropout_rate, name="dropout")(x)
-
-    # Final Softmax Classification Head (3 mutually exclusive classes)
-    outputs = layers.Dense(num_classes, activation="softmax", name="classifier_output")(x)
-
-    model = models.Model(inputs=inputs, outputs=outputs, name="Potato_Disease_Custom_CNN")
     return model
 
 def build_transfer_learning_model(
@@ -77,24 +61,26 @@ def build_transfer_learning_model(
 ) -> tf.keras.Model:
     """
     Builds a Transfer Learning model using the MobileNetV2 backbone pretrained on ImageNet.
-    Used for academic comparative benchmarking against our Custom CNN.
+    Used for academic comparative benchmarking.
     """
     base_model = tf.keras.applications.MobileNetV2(
         input_shape=input_shape,
         include_top=False,
         weights="imagenet"
     )
-    base_model.trainable = False  # Freeze pretrained feature extraction backbone
+    base_model.trainable = False
 
-    inputs = layers.Input(shape=input_shape, name="input_image")
-    x = base_model(inputs, training=False)
-    x = layers.GlobalAveragePooling2D(name="gap")(x)
-    x = layers.Dropout(dropout_rate, name="dropout")(x)
-    outputs = layers.Dense(num_classes, activation="softmax", name="classifier_output")(x)
+    model = models.Sequential([
+        layers.Input(shape=input_shape, name="input_image"),
+        layers.Rescaling(1.0 / 255.0, name="rescaling"),
+        base_model,
+        layers.GlobalAveragePooling2D(name="gap"),
+        layers.Dropout(dropout_rate, name="dropout"),
+        layers.Dense(num_classes, activation="softmax", name="classifier_output")
+    ], name="Potato_MobileNetV2_TransferLearning")
 
-    model = models.Model(inputs=inputs, outputs=outputs, name="Potato_MobileNetV2_TransferLearning")
     return model
 
 if __name__ == "__main__":
-    cnn_model = build_custom_cnn()
-    cnn_model.summary()
+    cnn = build_custom_cnn()
+    cnn.summary()

@@ -1,0 +1,45 @@
+{
+    "test_loss": 0.8047,
+    "test_accuracy": 0.7269,
+    "macro_f1": 0.6852,
+    "per_class": {
+        "Potato___Early_blight": {
+            "display_name": "Early Blight",
+            "precision": 0.6447,
+            "recall": 0.98,
+            "f1_score": 0.7778,
+            "support": 100
+        },
+        "Potato___Late_blight": {
+            "display_name": "Late Blight",
+            "precision": 0.9444,
+            "recall": 0.51,
+            "f1_score": 0.6623,
+            "support": 100
+        },
+        "Potato___healthy": {
+            "display_name": "Healthy",
+            "precision": 0.8,
+            "recall": 0.5,
+            "f1_score": 0.6154,
+            "support": 16
+        }
+    },
+    "confusion_matrix": [
+        [
+            98,
+            2,
+            0
+        ],
+        [
+            47,
+            51,
+            2
+        ],
+        [
+            7,
+            1,
+            8
+        ]
+    ]
+}
