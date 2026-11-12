@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Large dataset files (downloaded via script)
+data/raw/
+data/processed/
+
+# Matplotlib cache
+.matplotlib/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Model artifacts & checkpoints (will track via releases/DVC or final models directory)
+models/*.keras
+models/*.h5
+models/*.pt
+!models/.gitkeep
+
+# Logs
+*.log
