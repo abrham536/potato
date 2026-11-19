@@ -37,6 +37,14 @@ app.add_middleware(
 # Global model cache
 _MODEL = None
 
+def check_leaf_presence(image: Image.Image, min_foliage_ratio: float = 0.12):
+    img = image.convert("RGB")
+    hsv = np.array(img.convert("HSV"), dtype=np.float32)
+    h, s, v = hsv[..., 0] / 255.0, hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
+    foliage_mask = (h >= (25.0 / 360.0)) & (h <= (165.0 / 360.0)) & (s >= 0.15) & (v >= 0.12)
+    ratio = float(np.mean(foliage_mask))
+    return (ratio >= min_foliage_ratio), ratio
+
 def get_model():
     global _MODEL
     if _MODEL is None:
@@ -87,10 +95,22 @@ async def predict_disease(file: UploadFile = File(...)):
     try:
         # 2. Read image bytes into PIL
         contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert("RGB")
-        image = image.resize(IMAGE_SIZE)
+        raw_image = Image.open(io.BytesIO(contents)).convert("RGB")
+        
+        # 3. Pre-screening: Validate whether input contains potato foliage
+        is_leaf, foliage_ratio = check_leaf_presence(raw_image)
+        if not is_leaf:
+            return JSONResponse(status_code=422, content={
+                "status": "rejected",
+                "error": "Out-of-Distribution: No potato leaf detected in image.",
+                "foliage_coverage_percent": round(foliage_ratio * 100, 2),
+                "threshold_percent": 12.0,
+                "message": "The uploaded photo does not contain sufficient potato foliage tissue."
+            })
 
-        # 3. Preprocess image tensor: [0, 255] -> [0.0, 1.0]
+        image = raw_image.resize(IMAGE_SIZE)
+
+        # 4. Preprocess image tensor: [0, 255] -> [0.0, 1.0]
         img_array = np.array(image, dtype=np.float32) / 255.0
         img_tensor = np.expand_dims(img_array, axis=0)  # (1, 256, 256, 3)
 

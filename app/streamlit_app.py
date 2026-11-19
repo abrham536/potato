@@ -70,6 +70,18 @@ st.markdown("""
         padding: 20px;
         border-left: 6px solid #2ecc71;
     }
+    .alert-card-invalid {
+        background-color: #fbeee6;
+        border-radius: 10px;
+        padding: 20px;
+        border-left: 6px solid #c0392b;
+    }
+    .alert-card-uncertain {
+        background-color: #fff9e6;
+        border-radius: 10px;
+        padding: 20px;
+        border-left: 6px solid #f39c12;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -78,6 +90,21 @@ def load_trained_model():
     if not BEST_MODEL_PATH.exists():
         return None
     return tf.keras.models.load_model(str(BEST_MODEL_PATH))
+
+def check_leaf_presence(image: Image.Image, min_foliage_ratio: float = 0.12):
+    """
+    Validates whether the uploaded image contains sufficient plant foliage
+    using HSV color-space analysis (green, yellow-green, and chlorotic plant tissue).
+    Returns (is_leaf: bool, foliage_ratio: float).
+    """
+    img = image.convert("RGB")
+    hsv = np.array(img.convert("HSV"), dtype=np.float32)
+    h, s, v = hsv[..., 0] / 255.0, hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
+    
+    # Foliage mask: Hue between 25° (yellow-brown) and 165° (deep green)
+    foliage_mask = (h >= (25.0 / 360.0)) & (h <= (165.0 / 360.0)) & (s >= 0.15) & (v >= 0.12)
+    ratio = float(np.mean(foliage_mask))
+    return (ratio >= min_foliage_ratio), ratio
 
 def preprocess_image(image: Image.Image):
     image = image.convert("RGB").resize(IMAGE_SIZE)
@@ -132,60 +159,85 @@ def main():
             if uploaded_file is not None:
                 image = Image.open(uploaded_file)
                 st.image(image, caption="Uploaded Leaf Photograph", use_container_width=True)
+                st.caption("ℹ️ *Input validation: Image is checked for foliage morphology before diagnostic inference.*")
 
         with col2:
             st.markdown("### 🔬 **Diagnostic Results**")
             if uploaded_file is not None:
-                with st.spinner("Analyzing leaf morphology and lesions..."):
-                    tensor = preprocess_image(image)
-                    probabilities = model.predict(tensor, verbose=0)[0]
+                with st.spinner("Analyzing image morphology and leaf structures..."):
+                    # 1. Pre-screening: Validate whether input contains potato foliage
+                    is_leaf, foliage_ratio = check_leaf_presence(image)
 
-                    pred_idx = int(np.argmax(probabilities))
-                    pred_class = CLASS_NAMES[pred_idx]
-                    display_name = DISPLAY_LABELS[pred_idx]
-                    confidence = probabilities[pred_idx] * 100
-
-                    # Styling card based on disease
-                    if pred_class == "Potato___Late_blight":
-                        card_class = "alert-card-late"
-                        badge = "🚨 CRITICAL DANGER: LATE BLIGHT DETECTED"
-                    elif pred_class == "Potato___Early_blight":
-                        card_class = "alert-card-early"
-                        badge = "⚠️ WARNING: EARLY BLIGHT DETECTED"
+                    if not is_leaf:
+                        st.markdown(f"""
+                        <div class='alert-card-invalid'>
+                            <h3 style='margin-top:0; color:#c0392b;'>🚫 INVALID IMAGE: NO POTATO LEAF DETECTED</h3>
+                            <p style='font-size:1.15rem; margin-bottom:8px;'>The uploaded photograph does not contain sufficient plant foliage or potato leaf tissue.</p>
+                            <p style='font-size:0.95rem; color:#7f8c8d; margin-bottom:0;'>Detected Plant Tissue: <b>{foliage_ratio * 100:.1f}%</b> (Required threshold: &ge; 12.0%)</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.warning("⚠️ **Diagnostic Halted:** This deep learning classifier is specialized for potato crop foliage (*Solanum tuberosum*). Please upload a clear photo of a real potato leaf.")
                     else:
-                        card_class = "alert-card-healthy"
-                        badge = "✅ EXCELLENT: HEALTHY LEAF"
+                        tensor = preprocess_image(image)
+                        probabilities = model.predict(tensor, verbose=0)[0]
 
-                    st.markdown(f"""
-                    <div class='{card_class}'>
-                        <h3 style='margin-top:0;'>{badge}</h3>
-                        <p style='font-size:1.2rem; margin-bottom:5px;'>Predicted Condition: <b>{display_name}</b></p>
-                        <p style='font-size:1.1rem; margin-bottom:0;'>Confidence Level: <b>{confidence:.2f}%</b></p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        pred_idx = int(np.argmax(probabilities))
+                        pred_class = CLASS_NAMES[pred_idx]
+                        display_name = DISPLAY_LABELS[pred_idx]
+                        confidence = probabilities[pred_idx] * 100
 
-                    st.markdown("#### **Softmax Probability Distribution**")
-                    for name, prob in zip(DISPLAY_LABELS, probabilities):
-                        pct = float(prob * 100)
-                        st.write(f"**{name}**: {pct:.2f}%")
-                        st.progress(min(pct / 100.0, 1.0))
+                        # Check for low confidence / ambiguous prediction
+                        if confidence < 65.0:
+                            st.markdown(f"""
+                            <div class='alert-card-uncertain'>
+                                <h3 style='margin-top:0; color:#d35400;'>⚠️ LOW CONFIDENCE: UNCERTAIN DIAGNOSIS</h3>
+                                <p style='font-size:1.15rem; margin-bottom:5px;'>Tentative Prediction: <b>{display_name}</b></p>
+                                <p style='font-size:1.0rem; margin-bottom:0;'>Confidence: <b>{confidence:.2f}%</b> (Below reliable threshold of 65%)</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            st.info("💡 **Recommendation:** The leaf features are ambiguous or blurry. Please take a closer photograph with natural daylight focused on the leaf surface.")
+                        else:
+                            # Styling card based on disease
+                            if pred_class == "Potato___Late_blight":
+                                card_class = "alert-card-late"
+                                badge = "🚨 CRITICAL DANGER: LATE BLIGHT DETECTED"
+                            elif pred_class == "Potato___Early_blight":
+                                card_class = "alert-card-early"
+                                badge = "⚠️ WARNING: EARLY BLIGHT DETECTED"
+                            else:
+                                card_class = "alert-card-healthy"
+                                badge = "✅ EXCELLENT: HEALTHY LEAF"
 
-                    # Agronomic Advisory Section
-                    remedy = DISEASE_INFO.get(pred_class, {})
-                    st.divider()
-                    st.markdown("### 🌾 **Agronomic Treatment Protocol**")
+                            st.markdown(f"""
+                            <div class='{card_class}'>
+                                <h3 style='margin-top:0;'>{badge}</h3>
+                                <p style='font-size:1.2rem; margin-bottom:5px;'>Predicted Condition: <b>{display_name}</b></p>
+                                <p style='font-size:1.1rem; margin-bottom:0;'>Confidence Level: <b>{confidence:.2f}%</b></p>
+                            </div>
+                            """, unsafe_allow_html=True)
 
-                    with st.expander("🔍 **Diagnostic Symptoms**", expanded=True):
-                        for s in remedy.get("symptoms", []):
-                            st.markdown(f"- {s}")
+                        st.markdown("#### **Softmax Probability Distribution**")
+                        for name, prob in zip(DISPLAY_LABELS, probabilities):
+                            pct = float(prob * 100)
+                            st.write(f"**{name}**: {pct:.2f}%")
+                            st.progress(min(pct / 100.0, 1.0))
 
-                    with st.expander("🧪 **Chemical Fungicide Control**", expanded=(pred_class != "Potato___healthy")):
-                        for c in remedy.get("chemical_control", []):
-                            st.markdown(f"- {c}")
+                        # Agronomic Advisory Section
+                        remedy = DISEASE_INFO.get(pred_class, {})
+                        st.divider()
+                        st.markdown("### 🌾 **Agronomic Treatment Protocol**")
 
-                    with st.expander("🌱 **Cultural & Preventive Practices**", expanded=False):
-                        for cp in remedy.get("cultural_practices", []):
-                            st.markdown(f"- {cp}")
+                        with st.expander("🔍 **Diagnostic Symptoms**", expanded=True):
+                            for s in remedy.get("symptoms", []):
+                                st.markdown(f"- {s}")
+
+                        with st.expander("🧪 **Chemical Fungicide Control**", expanded=(pred_class != "Potato___healthy")):
+                            for c in remedy.get("chemical_control", []):
+                                st.markdown(f"- {c}")
+
+                        with st.expander("🌱 **Cultural & Preventive Practices**", expanded=False):
+                            for cp in remedy.get("cultural_practices", []):
+                                st.markdown(f"- {cp}")
 
             else:
                 st.info("👈 Please upload or capture an image on the left panel to begin diagnostic analysis.")
