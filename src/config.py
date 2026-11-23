@@ -45,4 +45,13 @@ DROPOUT_RATE = 0.3
 
 # Best Model Weights Path
 BEST_MODEL_PATH = MODELS_DIR / "best_potato_cnn.keras"
+VERIFIER_MODEL_PATH = MODELS_DIR / "potato_leaf_verifier.keras"
 TRAINING_LOG_PATH = REPORTS_DIR / "training_history.csv"
+
+# Leaf & Potato Verification Thresholds
+MIN_FOLIAGE_COVERAGE = 0.18      # Leaf must cover at least 18% of the frame
+MIN_EXG_MEAN = 18.0              # Excess Green index requirement for real foliage
+MIN_HUE_STD = 3.5                # Natural organic hue variance (rejects flat plastic/paper)
+MIN_TEXTURE_STD = 12.0           # Minimum texture standard deviation
+MAX_RECONSTRUCTION_MSE = 0.032   # Autoencoder reconstruction threshold for potato manifold (99th percentile = 0.030)
+MIN_PREDICTION_CONFIDENCE = 60.0 # Reliable confidence threshold for diagnostic advisory

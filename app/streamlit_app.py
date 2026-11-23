@@ -14,9 +14,11 @@ from src.config import (
     CLASS_NAMES,
     DISPLAY_LABELS,
     FIGURES_DIR,
-    REPORTS_DIR
+    REPORTS_DIR,
+    MIN_PREDICTION_CONFIDENCE
 )
 from src.remedies import DISEASE_INFO
+from src.potato_verifier import verify_potato_leaf, check_leaf_presence, VerificationResult
 
 import streamlit as st
 from PIL import Image
@@ -91,24 +93,14 @@ def load_trained_model():
         return None
     return tf.keras.models.load_model(str(BEST_MODEL_PATH))
 
-def check_leaf_presence(image: Image.Image, min_foliage_ratio: float = 0.12):
-    """
-    Validates whether the uploaded image contains sufficient plant foliage
-    using HSV color-space analysis (green, yellow-green, and chlorotic plant tissue).
-    Returns (is_leaf: bool, foliage_ratio: float).
-    """
-    img = image.convert("RGB")
-    hsv = np.array(img.convert("HSV"), dtype=np.float32)
-    h, s, v = hsv[..., 0] / 255.0, hsv[..., 1] / 255.0, hsv[..., 2] / 255.0
-    
-    # Foliage mask: Hue between 25° (yellow-brown) and 165° (deep green)
-    foliage_mask = (h >= (25.0 / 360.0)) & (h <= (165.0 / 360.0)) & (s >= 0.15) & (v >= 0.12)
-    ratio = float(np.mean(foliage_mask))
-    return (ratio >= min_foliage_ratio), ratio
-
 def preprocess_image(image: Image.Image):
+    """
+    Prepares input tensor for the CNN model.
+    Note: The Keras model contains an internal layers.Rescaling(1.0/255.0),
+    so raw [0.0, 255.0] float tensor is passed to avoid double rescaling.
+    """
     image = image.convert("RGB").resize(IMAGE_SIZE)
-    img_array = np.array(image, dtype=np.float32) / 255.0
+    img_array = np.array(image, dtype=np.float32)
     return np.expand_dims(img_array, axis=0)
 
 def main():
@@ -164,35 +156,53 @@ def main():
         with col2:
             st.markdown("### 🔬 **Diagnostic Results**")
             if uploaded_file is not None:
-                with st.spinner("Analyzing image morphology and leaf structures..."):
-                    # 1. Pre-screening: Validate whether input contains potato foliage
-                    is_leaf, foliage_ratio = check_leaf_presence(image)
+                with st.spinner("Analyzing botanical morphology and potato leaf manifold..."):
+                    # 1. Multi-tier verification: Ensure input is specifically a potato leaf
+                    ver_res = verify_potato_leaf(image)
 
-                    if not is_leaf:
+                    if not ver_res.is_valid:
+                        if not ver_res.is_leaf:
+                            card_title = "🚫 NON-LEAF IMAGE DETECTED"
+                            card_desc = "The uploaded photograph does not contain biological plant foliage or leaves."
+                            advisory_note = "Non-leaf subjects (human faces, skin, clothing, animals, vehicles, furniture, or random objects) cannot be diagnosed."
+                        else:
+                            card_title = "🍃 NON-POTATO LEAF DETECTED"
+                            card_desc = "Plant leaf detected, but morphology and textural patterns do not match potato foliage (*Solanum tuberosum*)."
+                            advisory_note = "This diagnostic system is specialized **exclusively for potato crop foliage**. Leaves from other plants (such as tomato, corn, apple, pepper, or ornamental plants) are rejected to prevent dangerous misdiagnosis."
+
                         st.markdown(f"""
                         <div class='alert-card-invalid'>
-                            <h3 style='margin-top:0; color:#c0392b;'>🚫 INVALID IMAGE: NO POTATO LEAF DETECTED</h3>
-                            <p style='font-size:1.15rem; margin-bottom:8px;'>The uploaded photograph does not contain sufficient plant foliage or potato leaf tissue.</p>
-                            <p style='font-size:0.95rem; color:#7f8c8d; margin-bottom:0;'>Detected Plant Tissue: <b>{foliage_ratio * 100:.1f}%</b> (Required threshold: &ge; 12.0%)</p>
+                            <h3 style='margin-top:0; color:#c0392b;'>{card_title}</h3>
+                            <p style='font-size:1.15rem; margin-bottom:8px;'>{card_desc}</p>
+                            <p style='font-size:0.95rem; color:#7f8c8d; margin-bottom:0;'><b>Diagnostic Detail:</b> {ver_res.reason}</p>
                         </div>
                         """, unsafe_allow_html=True)
-                        st.warning("⚠️ **Diagnostic Halted:** This deep learning classifier is specialized for potato crop foliage (*Solanum tuberosum*). Please upload a clear photo of a real potato leaf.")
+                        st.warning(f"⚠️ **Diagnostic Halted:** {advisory_note} Please upload a clear photo of a real potato leaf.")
+
+                        with st.expander("🔍 **Verification Telemetry & Diagnostic Metrics**", expanded=False):
+                            m1, m2, m3, m4 = st.columns(4)
+                            m1.metric("Foliage Coverage", f"{ver_res.foliage_ratio * 100:.1f}%", help="Required >= 18%")
+                            m2.metric("Excess Green (ExG)", f"{ver_res.exg_mean:.1f}", help="Required >= 18")
+                            m3.metric("Organic Hue Var", f"{ver_res.hue_std:.1f}°", help="Required >= 3.5°")
+                            m4.metric("Manifold MSE", f"{ver_res.reconstruction_mse:.4f}", help="Required <= 0.032")
                     else:
                         tensor = preprocess_image(image)
-                        probabilities = model.predict(tensor, verbose=0)[0]
+                        probabilities = model(tensor, training=False).numpy()[0]
 
                         pred_idx = int(np.argmax(probabilities))
                         pred_class = CLASS_NAMES[pred_idx]
                         display_name = DISPLAY_LABELS[pred_idx]
                         confidence = probabilities[pred_idx] * 100
 
+                        st.caption("✅ **Verified Input:** Genuine potato leaf foliage (*Solanum tuberosum*) confirmed.")
+
                         # Check for low confidence / ambiguous prediction
-                        if confidence < 65.0:
+                        if confidence < MIN_PREDICTION_CONFIDENCE:
                             st.markdown(f"""
                             <div class='alert-card-uncertain'>
                                 <h3 style='margin-top:0; color:#d35400;'>⚠️ LOW CONFIDENCE: UNCERTAIN DIAGNOSIS</h3>
                                 <p style='font-size:1.15rem; margin-bottom:5px;'>Tentative Prediction: <b>{display_name}</b></p>
-                                <p style='font-size:1.0rem; margin-bottom:0;'>Confidence: <b>{confidence:.2f}%</b> (Below reliable threshold of 65%)</p>
+                                <p style='font-size:1.0rem; margin-bottom:0;'>Confidence: <b>{confidence:.2f}%</b> (Below reliable threshold of {MIN_PREDICTION_CONFIDENCE:.0f}%)</p>
                             </div>
                             """, unsafe_allow_html=True)
                             st.info("💡 **Recommendation:** The leaf features are ambiguous or blurry. Please take a closer photograph with natural daylight focused on the leaf surface.")

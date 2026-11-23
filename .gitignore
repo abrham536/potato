@@ -29,6 +29,10 @@ models/*.h5
 models/*.pt
 !models/.gitkeep
 !models/best_potato_cnn.keras
+!models/potato_leaf_verifier.keras
 
 # Logs
 *.log
+
+# Untracked foreign projects
+my-best-portifolio/
